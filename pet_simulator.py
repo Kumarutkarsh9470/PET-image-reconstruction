@@ -180,6 +180,96 @@ def build_system_matrix(image_size=128, n_angles=180, n_bins=180):
 
 
 # ---------------------------------------------------------------------------
+# 2b.  SPARSE system matrix  (memory-efficient alternative)
+# ---------------------------------------------------------------------------
+
+def build_system_matrix_sparse(image_size=128, n_angles=180, n_bins=180):
+    """
+    Build a SPARSE 2D system matrix using the same ray-driven projector.
+
+    Uses scipy.sparse COO → CSR format.  ~20× less memory than dense version
+    for typical parameters (the system matrix is >95% zeros).
+
+    Returns
+    -------
+    P : scipy.sparse.csr_matrix, shape (n_angles*n_bins, image_size**2)
+    n_angles, n_bins, image_size : int
+    """
+    from scipy.sparse import coo_matrix
+
+    print(f"Building SPARSE system matrix: {n_angles} angles × {n_bins} bins → "
+          f"{n_angles*n_bins} measurements, {image_size**2} voxels ...")
+
+    angles = np.linspace(0, np.pi, n_angles, endpoint=False)
+    half = image_size / 2.0
+    bin_positions = np.linspace(-half, half, n_bins)
+    n_samples = image_size * 2
+    scale = 2 * half * 1.42 / n_samples
+
+    # Accumulate COO entries
+    rows = []
+    cols = []
+    vals = []
+
+    for a_idx, theta in enumerate(angles):
+        cos_t, sin_t = np.cos(theta), np.sin(theta)
+
+        for b_idx, s in enumerate(bin_positions):
+            row_idx = a_idx * n_bins + b_idx
+
+            t_vals = np.linspace(-half * 1.42, half * 1.42, n_samples)
+
+            ray_x = s * cos_t - t_vals * sin_t
+            ray_y = s * sin_t + t_vals * cos_t
+
+            col_f = ray_x + (image_size - 1) / 2.0
+            row_f = ray_y + (image_size - 1) / 2.0
+
+            col0 = np.floor(col_f).astype(int)
+            row0 = np.floor(row_f).astype(int)
+            dc = col_f - col0
+            dr = row_f - row0
+
+            for t_i in range(n_samples):
+                c0, r0 = col0[t_i], row0[t_i]
+                fc, fr = dc[t_i], dr[t_i]
+
+                for dr_, dc_, w in [
+                    (0, 0, (1-fr)*(1-fc)),
+                    (0, 1, (1-fr)*fc),
+                    (1, 0, fr*(1-fc)),
+                    (1, 1, fr*fc)
+                ]:
+                    r = r0 + dr_
+                    c = c0 + dc_
+                    if 0 <= r < image_size and 0 <= c < image_size:
+                        pix_idx = r * image_size + c
+                        if w * scale > 1e-12:
+                            rows.append(row_idx)
+                            cols.append(pix_idx)
+                            vals.append(w * scale)
+
+    n_det = n_angles * n_bins
+    n_pix = image_size * image_size
+
+    P = coo_matrix((np.array(vals, dtype=np.float32),
+                     (np.array(rows), np.array(cols))),
+                    shape=(n_det, n_pix))
+    P = P.tocsr()
+
+    nnz = P.nnz
+    dense_size = n_det * n_pix * 4  # bytes (float32)
+    sparse_size = nnz * (4 + 4) + (n_det + 1) * 4  # rough CSR estimate
+    ratio = dense_size / max(sparse_size, 1)
+
+    print(f"Sparse system matrix built: {nnz} non-zeros "
+          f"({100*nnz/(n_det*n_pix):.2f}% dense), "
+          f"~{ratio:.0f}× memory savings")
+
+    return P, n_angles, n_bins, image_size
+
+
+# ---------------------------------------------------------------------------
 # 3.  Fast approximate projector using scipy (production-style alternative)
 # ---------------------------------------------------------------------------
 

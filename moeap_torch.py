@@ -26,9 +26,13 @@ from pet_objectives_torch import (
     phi_quant_batch, phi_detect_batch
 )
 from nsga2_core import (
-    fast_non_dominated_sort, compute_all_crowding,
+    fast_non_dominated_sort, fast_non_dominated_sort_numpy,
+    compute_all_crowding,
     tournament_selection, select_next_generation
 )
+from indicators import hypervolume, spacing, compute_all_indicators
+from termination import ConvergenceTermination, CombinedTermination, MaxGenTermination
+from polynomial_mutation import hybrid_mutation_batch_torch
 
 
 # ---------------------------------------------------------------------------
@@ -48,10 +52,21 @@ class MOEAPConfig:
     fwhm_min_cm: float = 0.0
     fwhm_max_cm: float = 2.0
     pixel_size_cm: float = 0.35
+    p_em: float = 0.7              # probability of EM mutation vs polynomial
+    eta_m: float = 20.0            # polynomial mutation distribution index
+    use_hybrid_mutation: bool = True  # enable hybrid (EM + polynomial) mutation
 
     # Detection objective
     disc_radius_cm: float = 0.5
     L: int = 2
+
+    # Termination
+    use_adaptive_termination: bool = True
+    convergence_tol: float = 0.005
+    convergence_patience: int = 10
+
+    # NDS
+    use_vectorized_nds: bool = True   # use fast numpy-vectorised NDS
 
     log_every: int = 10
     seed: int = 42
@@ -72,6 +87,10 @@ class MOEAPHistory:
     max_detect: List[float] = field(default_factory=list)
     front_size: List[int] = field(default_factory=list)
     wall_time: List[float] = field(default_factory=list)
+    # New: quality indicators per generation
+    hv: List[float] = field(default_factory=list)
+    spacing_val: List[float] = field(default_factory=list)
+    terminated_reason: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -177,15 +196,25 @@ def generate_offspring_torch(X: torch.Tensor,
     # --- SBC Crossover (vectorised, on GPU) ---
     Q1, Q2 = sbc_crossover_torch(P1, P2, eta_c=config.eta_c, P_c=config.P_c)
 
-    # --- Directed mutation: apply to both sets, take alternating pairs ---
-    # Mutate Q1 and Q2 together as a 2N batch, then split
+    # --- Mutation: hybrid (EM + polynomial) or EM-only ---
     Q_all  = torch.cat([Q1, Q2], dim=0)         # (2N, H, W)
-    Q_mut  = directed_mutation_batch(
-        Q_all, y, projector,
-        pixel_size_cm=config.pixel_size_cm,
-        fwhm_min_cm=config.fwhm_min_cm,
-        fwhm_max_cm=config.fwhm_max_cm
-    )
+
+    if config.use_hybrid_mutation:
+        Q_mut = hybrid_mutation_batch_torch(
+            Q_all, y, projector,
+            p_em=config.p_em,
+            eta_m=config.eta_m,
+            pixel_size_cm=config.pixel_size_cm,
+            fwhm_min_cm=config.fwhm_min_cm,
+            fwhm_max_cm=config.fwhm_max_cm
+        )
+    else:
+        Q_mut = directed_mutation_batch(
+            Q_all, y, projector,
+            pixel_size_cm=config.pixel_size_cm,
+            fwhm_min_cm=config.fwhm_min_cm,
+            fwhm_max_cm=config.fwhm_max_cm
+        )
     offspring_X = Q_mut[:N]                      # take first N
 
     # --- Evaluate offspring ---
@@ -272,12 +301,34 @@ def run_moeap_torch(y_np: np.ndarray,
     history = MOEAPHistory()
     t0      = time.time()
 
+    # Select NDS function
+    nds_func = fast_non_dominated_sort_numpy if config.use_vectorized_nds \
+               else fast_non_dominated_sort
+
+    # Set up adaptive termination
+    if config.use_adaptive_termination:
+        termination = CombinedTermination([
+            MaxGenTermination(config.n_generations),
+            ConvergenceTermination(
+                tol=config.convergence_tol,
+                n_patience=config.convergence_patience
+            ),
+        ])
+    else:
+        termination = MaxGenTermination(config.n_generations)
+
+    # Compute HV reference point (will be updated dynamically)
+    hv_ref_point = None
+
     # Move data to device
     y        = torch.from_numpy(y_np).to(device)
     roi_mask = torch.from_numpy(roi_mask_np).to(device)
 
     print(f"\n{'='*60}")
     print(f"  MOEAP (PyTorch)  |  device={device}  N={config.N}  gens={config.n_generations}")
+    print(f"  Hybrid mutation: {config.use_hybrid_mutation}  |  "
+          f"Adaptive termination: {config.use_adaptive_termination}")
+    print(f"  Vectorised NDS: {config.use_vectorized_nds}")
     print(f"{'='*60}")
 
     # ------------------------------------------------------------------
@@ -301,8 +352,8 @@ def run_moeap_torch(y_np: np.ndarray,
     for gen in range(config.n_generations):
         t_gen = time.time()
 
-        # Sort current population (CPU)
-        fronts, ranks = fast_non_dominated_sort(scores)
+        # Sort current population (CPU, vectorised)
+        fronts, ranks = nds_func(scores)
         crowding      = compute_all_crowding(scores, fronts)
 
         # Generate offspring (GPU)
@@ -314,11 +365,21 @@ def run_moeap_torch(y_np: np.ndarray,
         # Select next gen (CPU sort + GPU index)
         X, scores = select_next_gen_torch(X, scores, X_off, scores_off, config.N)
 
-        # Logging
-        fronts_new, _ = fast_non_dominated_sort(scores)
+        # Logging: extract Pareto front and compute indicators
+        fronts_new, _ = nds_func(scores)
         pf_scores     = [scores[i] for i in fronts_new[0]]
         q_all         = [s[0] for s in scores]
         d_all         = [s[1] for s in scores]
+
+        # Compute quality indicators
+        pf_array = np.array(pf_scores)
+        if hv_ref_point is None:
+            # Set ref point slightly worse than worst seen
+            hv_ref_point = np.array([min(q_all) - abs(min(q_all)) * 0.1,
+                                     min(d_all) - abs(min(d_all)) * 0.1])
+
+        gen_hv = hypervolume(pf_array, hv_ref_point) if len(pf_scores) >= 2 else 0.0
+        gen_sp = spacing(pf_array) if len(pf_scores) >= 2 else 0.0
 
         history.gen.append(gen)
         history.pareto_front_scores.append(pf_scores)
@@ -326,6 +387,11 @@ def run_moeap_torch(y_np: np.ndarray,
         history.max_detect.append(max(d_all))
         history.front_size.append(len(fronts_new[0]))
         history.wall_time.append(time.time() - t0)
+        history.hv.append(gen_hv)
+        history.spacing_val.append(gen_sp)
+
+        # Check adaptive termination
+        termination.update(scores, gen=gen)
 
         if (gen + 1) % config.log_every == 0 or gen == 0:
             elapsed = time.time() - t_gen
@@ -333,12 +399,22 @@ def run_moeap_torch(y_np: np.ndarray,
                   f"Front: {len(fronts_new[0]):3d} | "
                   f"MaxQ: {max(q_all):.1f} | "
                   f"MaxD: {max(d_all):.4f} | "
+                  f"HV: {gen_hv:.2f} | "
+                  f"Sp: {gen_sp:.4f} | "
                   f"{elapsed:.2f}s/gen")
+
+        if termination.has_terminated():
+            history.terminated_reason = termination.reason
+            print(f"\n*** Early termination at gen {gen+1}: {termination.reason}")
+            break
+
+    if not termination.has_terminated():
+        history.terminated_reason = f"max_gen={config.n_generations} reached"
 
     # ------------------------------------------------------------------
     # Final Pareto front
     # ------------------------------------------------------------------
-    final_fronts, _ = fast_non_dominated_sort(scores)
+    final_fronts, _ = nds_func(scores)
     pf_idx          = final_fronts[0]
     pareto_images   = tensor_to_pop(X[pf_idx])
     pareto_scores   = [scores[i] for i in pf_idx]
@@ -349,9 +425,11 @@ def run_moeap_torch(y_np: np.ndarray,
     pareto_scores = [pareto_scores[i] for i in order]
 
     total = time.time() - t0
+    gens_run = gen + 1
     print(f"\nDone. Total time: {total:.1f}s  |  "
           f"Pareto front: {len(pareto_images)} images  |  "
-          f"{total/config.n_generations:.2f}s/gen avg")
+          f"{total/gens_run:.2f}s/gen avg  |  "
+          f"Final HV: {history.hv[-1]:.2f}")
 
     return pareto_images, pareto_scores, history
 
