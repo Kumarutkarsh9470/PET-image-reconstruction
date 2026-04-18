@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import sys, os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import numpy as np
 import torch
 
@@ -36,7 +37,7 @@ def parse_args():
     p.add_argument("--seed",     type=int,   default=42)
     p.add_argument("--device",   default="auto",
                    help="auto | cuda | mps | cpu")
-    p.add_argument("--out",      default="/home/claude/moeap/results_torch")
+    p.add_argument("--out",      default="./results_torch")
     return p.parse_args()
 
 
@@ -107,7 +108,7 @@ def main():
     print(f"\n{'='*70}")
     print("SUMMARY")
     print(f"{'='*70}")
-    print(f"{'Image':<22} {'Φ_quant':>12} {'Φ_detect':>10} {'ME%':>8} {'SNR':>8}")
+    print(f"{'Image':<22} {'Phi_quant':>12} {'Phi_detect':>10} {'ME%':>8} {'SNR':>8}")
     print("-"*70)
     n = len(pareto_images)
     for label, idx in [("A: Max Detect", 0), ("B: Compromise", n//2), ("C: Max Quant", n-1)]:

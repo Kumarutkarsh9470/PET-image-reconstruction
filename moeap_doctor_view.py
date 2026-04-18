@@ -481,9 +481,9 @@ def save_full_dashboard_v2(pareto_images, pareto_scores, history,
         )
 
     print(f"\nAll outputs saved to: {output_dir}/")
-    print(f"  doctor_spectrum.png         ← full clinical spectrum")
-    print(f"  pareto_front_improved.png   ← improved Pareto comparison")
-    print(f"  reference_correlations_annotated.png ← with trend analysis")
-    print(f"  clinical_reports/           ← per-image clinical reports")
+    print(f"  doctor_spectrum.png         -> full clinical spectrum")
+    print(f"  pareto_front_improved.png   -> improved Pareto comparison")
+    print(f"  reference_correlations_annotated.png -> with trend analysis")
+    print(f"  clinical_reports/           -> per-image clinical reports")
 
     return ref_metrics

@@ -484,7 +484,7 @@ def run_em_baseline_torch(y_np: np.ndarray,
                                pixel_size_cm=config.pixel_size_cm,
                                L=config.L).item()
         results.append((x_s.squeeze(0).cpu().numpy(), (q, d)))
-        print(f"  FWHM={fwhm:.2f}cm → quant={q:.1f}, detect={d:.4f}")
+        print(f"  FWHM={fwhm:.2f}cm -> quant={q:.1f}, detect={d:.4f}")
 
     return results
 
