@@ -141,7 +141,6 @@ def plot_doctor_spectrum(pareto_images, pareto_scores,
 # 2.  IMPROVED PARETO FRONT PLOT
 #     Addresses the issue seen in results: EM baseline barely overlaps
 #     the MOEAP front. Better separation visualisation.
-# ---------------------------------------------------------------------------
 
 def plot_pareto_comparison_improved(pareto_scores,
                                      em_results=None,
@@ -265,7 +264,7 @@ def plot_reference_correlations_annotated(pareto_scores, ref_metrics_list,
     axes[0].legend(fontsize=9)
     axes[0].grid(True, alpha=0.3)
 
-    # --- Plot 2: Known-SNR vs Φ_detect ---
+    # Plot 2: Known-SNR vs Φ_detect
     axes[1].scatter(detect_vals, snr_vals, c='darkorange', s=40,
                     edgecolors='k', lw=0.4, alpha=0.8)
     z2  = np.polyfit(detect_vals, snr_vals, 1)
@@ -298,11 +297,8 @@ def plot_reference_correlations_annotated(pareto_scores, ref_metrics_list,
         print(f"Saved: {save_path}")
     return fig
 
-
-# ---------------------------------------------------------------------------
 # 4.  SINGLE-IMAGE CLINICAL REPORT
 #     For when a doctor selects one image from the spectrum
-# ---------------------------------------------------------------------------
 
 def plot_clinical_report(image, score, ref_metric, rank, total,
                           x_true=None, save_path=None):
@@ -382,10 +378,7 @@ def plot_clinical_report(image, score, ref_metric, rank, total,
         print(f"Saved: {save_path}")
     return fig
 
-
-# ---------------------------------------------------------------------------
 # 5.  Updated save_full_dashboard with all new plots
-# ---------------------------------------------------------------------------
 
 def save_full_dashboard_v2(pareto_images, pareto_scores, history,
                             x_true, tumor_mask, roi_mask,
