@@ -1,6 +1,5 @@
 """
 indicators.py
-=============
 Pareto Front Quality Indicators (coded from scratch, inspired by pymoo).
 
 Provides:
