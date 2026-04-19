@@ -22,10 +22,7 @@ from scipy.spatial.distance import pdist, squareform, cdist
 
 EPS = 1e-10
 
-
-# ---------------------------------------------------------------------------
 # 1.  Hypervolume  (2D exact, O(N log N) sweep-line)
-# ---------------------------------------------------------------------------
 
 def hypervolume_2d(F, ref_point):
     """
@@ -108,10 +105,6 @@ def hypervolume_2d(F, ref_point):
                 # No — we need to think about this differently
                 pass
             current_max_obj2 = pts_asc[i, 1]
-
-    # Let me use the clean textbook approach:
-    # For maximisation HV with ref_point as the LOWER-LEFT corner:
-    #
     # 1. Sort non-dominated points by obj1 ascending
     # 2. The front is a staircase going right and down
     # 3. Area = sum of rectangles under each step
@@ -134,8 +127,6 @@ def hypervolume_2d(F, ref_point):
     #   right = nd[i+1, 0]  (or we go to infinity — but bounded by ref? No, ref is lower-left)
     #   bottom = ref[1]
     #   top   = nd[i, 1]
-    # Wait — ref_point is the WORST point (lower-left for maximisation).
-    # The HV is the area between the front and the ref_point.
 
     hv = 0.0
     for i in range(len(nd)):
@@ -143,22 +134,11 @@ def hypervolume_2d(F, ref_point):
         if i + 1 < len(nd):
             width = nd[i + 1, 0] - nd[i, 0]
         else:
-            # extends to... we need an upper bound for obj1?
-            # No — in 2D HV the rightmost point's rectangle extends nothing further
-            # unless we have a right boundary. The ref_point gives us the lower-left.
-            # Actually we need ref to bound ALL sides. But for maximisation,
-            # ref is the worst point, so the area extends from each point
-            # to the RIGHT boundary... but there's no right boundary explicitly.
-            #
             # Correction: Standard HV for minimisation uses ref as upper-right.
             # For maximisation, we should negate and use standard formulation.
             width = 0
         hv += height * width
-
-    # Hmm, this doesn't account for the last point properly.
-    # Let me just negate and use the standard minimisation HV.
     return _hypervolume_2d_minimisation(-F, -ref_point)
-
 
 def _hypervolume_2d_minimisation(F, ref_point):
     """
@@ -178,15 +158,10 @@ def _hypervolume_2d_minimisation(F, ref_point):
 
     ref = np.asarray(ref_point, dtype=np.float64)
     pts = np.asarray(F, dtype=np.float64).copy()
-
-    # Clip: only keep points dominated by ref (i.e., F[i] < ref componentwise)
     mask = np.all(pts < ref, axis=1)
     pts = pts[mask]
-
     if len(pts) == 0:
         return 0.0
-
-    # Sort by obj1 ascending (ties: obj2 descending)
     order = np.lexsort((-pts[:, 1], pts[:, 0]))
     pts = pts[order]
 
@@ -198,8 +173,6 @@ def _hypervolume_2d_minimisation(F, ref_point):
         if pts[i, 1] < nd[-1][1]:
             nd.append(pts[i])
     nd = np.array(nd)
-
-    # HV = sum of rectangles
     # Each point i contributes rectangle:
     #   width  = nd[i+1, 0] - nd[i, 0]   (last point: ref[0] - nd[-1, 0])
     #   height = ref[1] - nd[i, 1]
@@ -211,10 +184,7 @@ def _hypervolume_2d_minimisation(F, ref_point):
             width = ref[0] - nd[i, 0]
         height = ref[1] - nd[i, 1]
         hv += width * height
-
     return hv
-
-
 def hypervolume(F, ref_point):
     """
     Compute hypervolume indicator for a Pareto front.
@@ -238,10 +208,7 @@ def hypervolume(F, ref_point):
     assert F.shape[1] == 2, "Only 2-objective HV is supported."
     return hypervolume_2d(F, ref)
 
-
-# ---------------------------------------------------------------------------
 # 2.  Hypervolume Contribution (per-point)
-# ---------------------------------------------------------------------------
 
 def hypervolume_contribution(F, ref_point):
     """
@@ -272,10 +239,7 @@ def hypervolume_contribution(F, ref_point):
 
     return hvc
 
-
-# ---------------------------------------------------------------------------
 # 3.  Inverted Generational Distance (IGD)
-# ---------------------------------------------------------------------------
 
 def igd(F, pf_reference, normalize=False):
     """
@@ -327,11 +291,9 @@ def igd_plus(F, pf_reference, normalize=False):
         d+(z, a) = sqrt( sum( max(z_i - a_i, 0)^2 ) )
 
     Parameters
-    ----------
     F, pf_reference : (N, 2) and (M, 2) objective values (MAXIMISED)
 
     Returns
-    -------
     igd_plus_value : float
     """
     F = np.atleast_2d(np.asarray(F, dtype=np.float64))
@@ -359,10 +321,7 @@ def igd_plus(F, pf_reference, normalize=False):
 
     return float(min_dists.mean())
 
-
-# ---------------------------------------------------------------------------
 # 4.  Spacing Indicator
-# ---------------------------------------------------------------------------
 
 def spacing(F):
     """
@@ -376,7 +335,6 @@ def spacing(F):
     F : (N, 2) objective values
 
     Returns
-    -------
     S : float   spacing value (0 = perfectly uniform)
     """
     F = np.atleast_2d(np.asarray(F, dtype=np.float64))
@@ -396,23 +354,18 @@ def spacing(F):
     S = np.sqrt(np.sum((d - dm) ** 2) / n)
     return float(S)
 
-
-# ---------------------------------------------------------------------------
 # 5.  Convenience: compute all indicators at once
-# ---------------------------------------------------------------------------
 
 def compute_all_indicators(F, ref_point, pf_reference=None):
     """
     Compute all available indicators for a Pareto front.
 
     Parameters
-    ----------
     F            : (N, 2) or list of tuples
     ref_point    : (2,)
     pf_reference : (M, 2) optional reference front for IGD
 
     Returns
-    -------
     dict with keys: 'hv', 'spacing', and optionally 'igd'
     """
     F = np.atleast_2d(np.asarray(F, dtype=np.float64))
@@ -429,15 +382,12 @@ def compute_all_indicators(F, ref_point, pf_reference=None):
 
     return result
 
-
-# ---------------------------------------------------------------------------
 # Sanity check
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print("=== Indicators Sanity Check ===")
 
-    # ---- Test 1: Hypervolume on known front ----
+    # Test 1: Hypervolume on known front
     # Square front: (0,1), (1,0) with ref (-1, -1)  → maximisation
     # After negation: minimise (0,-1), (-1,0) with ref (1,1)
     # HV = area = 1*1 = 1  ... let's compute manually
@@ -455,7 +405,7 @@ if __name__ == "__main__":
     print(f"HV test 1: {hv:.4f}  (expected: 3.0)")
     assert abs(hv - 3.0) < 0.01, f"HV test 1 failed: {hv}"
 
-    # ---- Test 2: Single point HV ----
+    # Test 2: Single point HV
     F2 = np.array([[2.0, 3.0]])
     ref2 = np.array([0.0, 0.0])
     hv2 = hypervolume(F2, ref2)
@@ -464,13 +414,13 @@ if __name__ == "__main__":
     print(f"HV test 2: {hv2:.4f}  (expected: 6.0)")
     assert abs(hv2 - 6.0) < 0.01, f"HV test 2 failed: {hv2}"
 
-    # ---- Test 3: HV contribution ----
+    # Test 3: HV contribution
     hvc = hypervolume_contribution(F, ref)
     print(f"HVC: {hvc}  (sum should be <= HV={hv:.1f})")
     # Each point dominates some exclusive region
     assert all(hvc >= 0), "HVC should be non-negative"
 
-    # ---- Test 4: Spacing on uniform vs clustered ----
+    # Test 4: Spacing on uniform vs clustered
     uniform = np.array([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], dtype=float)
     s_uniform = spacing(uniform)
 
@@ -481,22 +431,22 @@ if __name__ == "__main__":
     print(f"Spacing (clustered): {s_clustered:.4f}")
     assert s_uniform < s_clustered, "Uniform front should have lower spacing"
 
-    # ---- Test 5: IGD ----
+    # Test 5: IGD 
     ref_front = np.array([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], dtype=float)
     approx = np.array([[0.5, 3.5], [2.5, 1.5]], dtype=float)
     igd_val = igd(approx, ref_front)
     print(f"IGD: {igd_val:.4f}  (should be > 0)")
     assert igd_val > 0, "IGD should be positive"
 
-    # ---- Test 6: IGD+ ----
+    # Test 6: IGD+ 
     igdp_val = igd_plus(approx, ref_front)
     print(f"IGD+: {igdp_val:.4f}  (should be >= 0)")
     assert igdp_val >= 0
 
-    # ---- Test 7: compute_all_indicators ----
+    # Test 7: compute_all_indicators 
     all_ind = compute_all_indicators(uniform, np.array([-1.0, -1.0]),
                                       pf_reference=uniform)
     print(f"All indicators: {all_ind}")
     assert 'hv' in all_ind and 'spacing' in all_ind and 'igd' in all_ind
 
-    print("=== ALL PASSED ===")
+    print("ALL PASSED")
