@@ -1,6 +1,6 @@
 """
 moeap_torch.py
-==============
+
 PyTorch-accelerated MOEAP main loop.
 
 Key changes vs moeap.py (numpy version):
@@ -34,10 +34,7 @@ from indicators import hypervolume, spacing, compute_all_indicators
 from termination import ConvergenceTermination, CombinedTermination, MaxGenTermination
 from polynomial_mutation import hybrid_mutation_batch_torch
 
-
-# ---------------------------------------------------------------------------
 # Config
-# ---------------------------------------------------------------------------
 
 @dataclass
 class MOEAPConfig:
@@ -92,10 +89,7 @@ class MOEAPHistory:
     spacing_val: List[float] = field(default_factory=list)
     terminated_reason: str = ""
 
-
-# ---------------------------------------------------------------------------
 # Vectorised SBC crossover (torch)
-# ---------------------------------------------------------------------------
 
 def sbc_crossover_torch(P1: torch.Tensor, P2: torch.Tensor,
                          eta_c: float = 20.0,
@@ -138,9 +132,7 @@ def sbc_crossover_torch(P1: torch.Tensor, P2: torch.Tensor,
     return torch.clamp(Q1, min=0.0), torch.clamp(Q2, min=0.0)
 
 
-# ---------------------------------------------------------------------------
 # Population initialisation
-# ---------------------------------------------------------------------------
 
 def initialize_population_torch(N: int, x_fbp: np.ndarray,
                                  seed: int, device: torch.device,
@@ -155,10 +147,7 @@ def initialize_population_torch(N: int, x_fbp: np.ndarray,
     X0     = x_fbp[None, ...] + noise          # (N, H, W)
     return torch.from_numpy(np.clip(X0, 0, None)).to(device)
 
-
-# ---------------------------------------------------------------------------
 # Offspring generation (fully on GPU)
-# ---------------------------------------------------------------------------
 
 def generate_offspring_torch(X: torch.Tensor,
                               scores: List[Tuple],
@@ -183,7 +172,7 @@ def generate_offspring_torch(X: torch.Tensor,
     N      = X.shape[0]
     device = X.device
 
-    # --- Tournament selection: choose N parent pairs ---
+    # --- Tournament selection: choose N parent pairs 
     idx1 = [tournament_selection(ranks, crowding, rng) for _ in range(N)]
     idx2 = [tournament_selection(ranks, crowding, rng) for _ in range(N)]
 
