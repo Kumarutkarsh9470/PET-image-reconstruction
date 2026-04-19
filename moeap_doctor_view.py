@@ -1,6 +1,5 @@
 """
 moeap_doctor_view.py
-====================
 Generates the "clinical spectrum" visualization — the full Pareto front
 laid out so a doctor can browse the complete detection↔quantification
 tradeoff and pick the image best suited to their task.
@@ -21,11 +20,8 @@ from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 import os
 
-
-# ---------------------------------------------------------------------------
 # 1.  DOCTOR SPECTRUM VIEW
 #     Full Pareto front as a scrollable strip with clinical annotations
-# ---------------------------------------------------------------------------
 
 def plot_doctor_spectrum(pareto_images, pareto_scores,
                           x_true=None,
@@ -43,7 +39,6 @@ def plot_doctor_spectrum(pareto_images, pareto_scores,
       - ME% and SNR if ref_metrics provided
 
     Parameters
-    ----------
     pareto_images  : list of (H,W) arrays, sorted quant ascending (as returned by MOEAP)
     pareto_scores  : list of (quant, detect) tuples, matching order
     x_true         : (H,W) ground truth — appended at end if provided
@@ -143,8 +138,6 @@ def plot_doctor_spectrum(pareto_images, pareto_scores,
 
     return fig
 
-
-# ---------------------------------------------------------------------------
 # 2.  IMPROVED PARETO FRONT PLOT
 #     Addresses the issue seen in results: EM baseline barely overlaps
 #     the MOEAP front. Better separation visualisation.
@@ -227,11 +220,9 @@ def plot_pareto_comparison_improved(pareto_scores,
     return fig
 
 
-# ---------------------------------------------------------------------------
 # 3.  FIXED REFERENCE CORRELATION PLOTS
 #     The paper expects ME to DECREASE as Φ_quant increases.
 #     Our results show the opposite — flag this clearly.
-# ---------------------------------------------------------------------------
 
 def plot_reference_correlations_annotated(pareto_scores, ref_metrics_list,
                                            save_path=None):
@@ -246,7 +237,7 @@ def plot_reference_correlations_annotated(pareto_scores, ref_metrics_list,
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
 
-    # --- Plot 1: Mean Error vs Φ_quant ---
+    # Plot 1: Mean Error vs Φ_quant
     axes[0].scatter(quant_vals, me_vals, c='steelblue', s=40,
                     edgecolors='k', lw=0.4, alpha=0.8)
     z  = np.polyfit(quant_vals, me_vals, 1)
